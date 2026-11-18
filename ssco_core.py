@@ -20,6 +20,13 @@ import pandas as pd
 import requests
 
 SSCO_URL = "https://www.sunat.gob.pe/padronesnotificaciones/ssco/sujesincapacidadOperativa.xlsx"
+# Relación art. 12 DL 1532 (EIRL y sociedades vinculadas a SSCO). SUNAT no documenta una URL
+# fija para el Excel; se prueban estas rutas y, si fallan, la app usa la copia en data/.
+RELACION_PAGINA = "https://www.sunat.gob.pe/padronesnotificaciones/relacion-ssco.html"
+RELACION_URLS = [
+    "https://www.sunat.gob.pe/padronesnotificaciones/ssco/descarga-relacion-ssco.xlsx",
+    "https://www.sunat.gob.pe/padronesnotificaciones/descarga-relacion-ssco.xlsx",
+]
 FECHA_INICIO_DL1532 = date(2022, 3, 20)
 
 RUC_RE = re.compile(r"^(10|15|16|17|20)\d{9}$")
@@ -295,16 +302,133 @@ def leer_archivo_compras(nombre: str, data: bytes) -> ResultadoLectura:
 
 
 # --------------------------------------------------------------------------- padrón SSCO
+def descargar_excel(urls: list[str], timeout: int = 60) -> bytes:
+    """Descarga el primer Excel válido de la lista de URLs."""
+    errores = []
+    for url in urls:
+        try:
+            r = requests.get(url, timeout=timeout, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+            })
+            r.raise_for_status()
+            if not r.content.startswith(b"PK"):
+                raise ValueError("SUNAT no devolvió un archivo Excel válido (posible bloqueo o mantenimiento).")
+            return r.content
+        except Exception as e:  # noqa: BLE001
+            errores.append(f"{url}: {e}")
+    raise RuntimeError("\n".join(errores))
+
+
 def descargar_padron(timeout: int = 60) -> bytes:
     """Descarga el Excel oficial del padrón SSCO desde SUNAT."""
-    r = requests.get(SSCO_URL, timeout=timeout, headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                      "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    return descargar_excel([SSCO_URL], timeout)
+
+
+def descargar_relacion(timeout: int = 60) -> bytes:
+    """Descarga el Excel de la relación del art. 12 DL 1532 (vinculados a SSCO)."""
+    return descargar_excel(RELACION_URLS, timeout)
+
+
+def _fecha_txt(v) -> str:
+    return f"{v:%d/%m/%Y}" if pd.notna(v) else ""
+
+
+def leer_relacion(data: bytes, nombre: str = "relacion.xlsx") -> pd.DataFrame:
+    """Lee la relación del art. 12 DL 1532 (una fila por empresa vinculada y SSCO que la
+    origina) y devuelve una fila por RUC vinculado."""
+    if nombre.lower().endswith((".csv", ".txt")):
+        hojas = {"": pd.read_csv(io.StringIO(_leer_texto(data)), sep=None, engine="python",
+                                 header=None, dtype=str, keep_default_na=False)}
+    else:
+        hojas = pd.read_excel(io.BytesIO(data), sheet_name=None, header=None, dtype=object)
+
+    partes = []
+    for _, raw in hojas.items():
+        cab = next((i for i in range(min(20, len(raw)))
+                    if any(_norm(v) in ("NUMERO DE RUC", "RUC") for v in raw.iloc[i])), None)
+        if cab is None:
+            continue
+        nombres = [_norm(v) for v in raw.iloc[cab]]
+        df = raw.iloc[cab + 1:].reset_index(drop=True)
+
+        def col(pred):
+            j = next((k for k, n in enumerate(nombres) if pred(n)), None)
+            return df.iloc[:, j] if j is not None else pd.Series([None] * len(df))
+
+        ruc = col(lambda n: n in ("NUMERO DE RUC", "RUC")).map(limpiar_ruc)
+        partes.append(pd.DataFrame({
+            "RUC": ruc,
+            "Razón social": col(lambda n: n.startswith("DENOMINACION O RAZON SOCIAL")
+                                and "REPRESENTANTE" not in n and "SSCO" not in n).map(_txt),
+            "Titular": col(lambda n: "DEL TITULAR" in n and "NOMBRE" in n).map(_txt),
+            "Representante legal": col(lambda n: "REPRESENTANTE" in n and "RAZON" in n).map(_txt),
+            "Supuesto de inclusión": col(lambda n: n.startswith("SUPUESTO")).map(
+                lambda v: re.sub(r"^\d+\s*-\s*", "", _txt(v))),
+            "SSCO que origina": col(lambda n: "SSCO QUE ORIGINA" in n and "RAZON" in n).map(_txt),
+            "RUC SSCO que origina": col(lambda n: "RUC DEL SSCO" in n).map(limpiar_ruc),
+            "Fecha límite restricción": col(lambda n: n.startswith("FECHA LIMITE")).map(_a_fecha),
+            "Fecha de publicación": col(lambda n: n.startswith("FECHA DE PUBLICACION")).map(_a_fecha),
+        }))
+    if not partes:
+        raise ValueError("No se encontró la columna 'Número de RUC' en la relación.")
+    det = pd.concat(partes, ignore_index=True)
+    det = det[det["RUC"] != ""]
+
+    def unir(s):
+        return " / ".join(dict.fromkeys(v for v in s if v))
+
+    det["SSCO que origina"] = det.apply(
+        lambda f: f"{f['SSCO que origina']} ({f['RUC SSCO que origina']})" if f["RUC SSCO que origina"]
+        else f["SSCO que origina"], axis=1)
+    rel = det.groupby("RUC", as_index=False, sort=False).agg(**{
+        "Razón social": ("Razón social", "first"),
+        "Titular": ("Titular", unir),
+        "Representante legal": ("Representante legal", unir),
+        "Supuesto(s) de inclusión": ("Supuesto de inclusión", unir),
+        "SSCO que origina la inclusión": ("SSCO que origina", unir),
+        "Fecha de publicación": ("Fecha de publicación", "min"),
+        "Fecha límite restricción": ("Fecha límite restricción", "max"),
     })
-    r.raise_for_status()
-    if not r.content.startswith(b"PK"):
-        raise ValueError("SUNAT no devolvió un archivo Excel válido (posible bloqueo o mantenimiento).")
-    return r.content
+    for c in ("Fecha de publicación", "Fecha límite restricción"):
+        rel[c] = pd.to_datetime(rel[c], errors="coerce").dt.date
+    return rel
+
+
+def cruzar_vinculados(compras: pd.DataFrame, relacion: pd.DataFrame) -> pd.DataFrame:
+    """Cruce con la relación art. 12: empresas vinculadas a SSCO que, desde el día siguiente a
+    su publicación y hasta la fecha límite, solo pueden emitir boletas de venta y notas
+    de crédito/débito electrónicas."""
+    rel = relacion.rename(columns={c: f"Art.12 · {c}" for c in relacion.columns if c != "RUC"})
+    al = compras.merge(rel, left_on="RUC proveedor", right_on="RUC", how="inner").drop(columns="RUC")
+    if al.empty:
+        al.insert(0, "Nivel", [])
+        al.insert(1, "Observación", [])
+        return al
+
+    def evaluar(f):
+        fe = pd.to_datetime(f["Fecha emisión"], errors="coerce")
+        pub = pd.to_datetime(f["Art.12 · Fecha de publicación"], errors="coerce")
+        lim = pd.to_datetime(f["Art.12 · Fecha límite restricción"], errors="coerce")
+        periodo = f"desde el {_fecha_txt(pub + pd.Timedelta(days=1)) if pd.notna(pub) else '?'}" + \
+                  (f" hasta el {_fecha_txt(lim)}" if pd.notna(lim) else "")
+        if pd.isna(fe) or pd.isna(pub):
+            return "Medio", "Proveedor vinculado a un SSCO (art. 12 DL 1532). Revisar el comprobante."
+        if fe > pub and (pd.isna(lim) or fe <= lim):
+            if str(f["Tipo CP"]).zfill(2) == "01":
+                return ("Alto", f"FACTURA EMITIDA DURANTE LA RESTRICCIÓN: {periodo} el proveedor solo puede "
+                                "emitir boletas de venta y notas de crédito/débito electrónicas (art. 12 DL 1532). "
+                                "Verifique la validez del comprobante y del crédito fiscal.")
+            return ("Medio", f"Proveedor en periodo de restricción ({periodo}): solo puede emitir boletas de "
+                             "venta y notas electrónicas (art. 12 DL 1532).")
+        return ("Informativo", f"Proveedor vinculado a un SSCO (art. 12 DL 1532), publicado el {_fecha_txt(pub)}. "
+                               "Comprobante emitido fuera del periodo de restricción; evalúe el riesgo del proveedor.")
+
+    res = al.apply(evaluar, axis=1, result_type="expand")
+    al.insert(0, "Nivel", res[0])
+    al.insert(1, "Observación", res[1])
+    orden = {"Alto": 0, "Medio": 1, "Informativo": 2}
+    return al.sort_values("Nivel", key=lambda s: s.map(orden), kind="stable").reset_index(drop=True)
 
 
 def leer_padron(data: bytes, nombre: str = "padron.xlsx") -> pd.DataFrame:
@@ -432,11 +556,12 @@ def resumen_por_ejercicio(compras: pd.DataFrame, alertas: pd.DataFrame) -> pd.Da
     return out.sort_values("Ejercicio")
 
 
-def buscar_rucs(texto: str, padron: pd.DataFrame) -> pd.DataFrame:
+def buscar_rucs(texto: str, padron: pd.DataFrame, relacion: pd.DataFrame | None = None) -> pd.DataFrame:
     """Búsqueda manual de uno o varios RUCs (separados por espacios, comas o saltos de línea)."""
     tokens = [t for t in re.split(r"[\s,;]+", texto or "") if t]
     filas = []
     indice = padron.set_index("RUC")
+    ind_rel = relacion.set_index("RUC") if relacion is not None else None
     for t in dict.fromkeys(tokens):
         ruc = limpiar_ruc(t)
         if not ruc:
@@ -449,6 +574,16 @@ def buscar_rucs(texto: str, padron: pd.DataFrame) -> pd.DataFrame:
             fila.update({k: _txt(v) for k, v in datos.items()})
         else:
             fila["Resultado"] = "✅ No figura en el padrón SSCO"
+        if ind_rel is not None:
+            if ruc in ind_rel.index:
+                r = ind_rel.loc[ruc]
+                fila["Resultado"] += " · ⚠️ VINCULADO A SSCO (art. 12)"
+                if not fila.get("Razón social"):
+                    fila["Razón social"] = r["Razón social"]
+                fila.update({f"Art.12 · {k}": (_fecha_txt(v) if isinstance(v, date) else _txt(v))
+                             for k, v in r.items() if k != "Razón social"})
+            else:
+                fila["Resultado"] += " · no figura en la relación art. 12"
         if not ruc_digito_valido(ruc):
             fila["Resultado"] += " (dígito verificador no válido)"
         filas.append(fila)
@@ -456,10 +591,13 @@ def buscar_rucs(texto: str, padron: pd.DataFrame) -> pd.DataFrame:
 
 
 def exportar_excel(alertas: pd.DataFrame, resumen: pd.DataFrame, compras: pd.DataFrame,
-                   info: dict, por_ejercicio: pd.DataFrame | None = None) -> bytes:
+                   info: dict, por_ejercicio: pd.DataFrame | None = None,
+                   vinculados: pd.DataFrame | None = None) -> bytes:
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="xlsxwriter", datetime_format="dd/mm/yyyy", date_format="dd/mm/yyyy") as xw:
         hojas = [("Alertas SSCO", alertas), ("Resumen proveedores", resumen)]
+        if vinculados is not None:
+            hojas.append(("Vinculados art. 12", vinculados))
         if por_ejercicio is not None:
             hojas.append(("Resumen por ejercicio", por_ejercicio))
         hojas.append(("Compras revisadas", compras))

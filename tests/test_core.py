@@ -106,3 +106,47 @@ def test_varios_ejercicios_y_publicacion():
     assert momentos[0].startswith("Emitido antes") and momentos[1].startswith("Emitido después")
     pe = core.resumen_por_ejercicio(compras, a)
     assert pe["Ejercicio"].tolist() == ["2023", "2025"]
+
+
+def _relacion():
+    return core.leer_relacion(_xlsx([
+        ["Ítem", "Número de RUC", "Denominación o razón social", "Nombres y apellidos del titular",
+         "Supuesto específico que motiva la inclusión",
+         "Denominación o razón social del SSCO que origina la inclusión",
+         "Número de RUC del SSCO que origina la inclusión",
+         "Fecha límite de restricción de emisión de boletas de venta electrónicos y notas de crédito y débito",
+         "Número de RUC", "Fecha de publicación"],
+        [1, "20616315308", "WOD AND IRON S.A.C.", "", "Sociedades con SSCO", "RAZIN E.I.R.L.", "20612269395",
+         "01/08/2030", "20616315308", datetime(2026, 8, 31)],
+        [None, "20616315308", "WOD AND IRON S.A.C.", "", "02-Sociedades con SSCO", "SERVIDANT E.I.R.L.",
+         "20612282600", "01/08/2030", "=B3", datetime(2026, 8, 31)],
+    ]))
+
+
+def test_relacion_art12():
+    rel = _relacion()
+    assert len(rel) == 1
+    f = rel.iloc[0]
+    assert f["Supuesto(s) de inclusión"] == "Sociedades con SSCO"
+    assert "SERVIDANT E.I.R.L. (20612282600)" in f["SSCO que origina la inclusión"]
+    assert str(f["Fecha límite restricción"]) == "2030-08-01"
+
+    def fila(fecha, tipo):
+        return [fecha, None, tipo, "F001", None, "1", "6", "20616315308", "WOD", 100.0, 18.0,
+                0, 0, 0, 0, 0, 0, 0, 118.0]
+    r = core.leer_archivo_compras("resultado.xlsx", _xlsx([[None]] * 3 + [
+        fila(datetime(2026, 9, 10), "01"), fila(datetime(2026, 9, 11), "03"), fila(datetime(2026, 8, 1), "01")]))
+    v = core.cruzar_vinculados(r.compras, rel)
+    assert v["Nivel"].tolist() == ["Alto", "Medio", "Informativo"]
+    assert v.iloc[0]["Observación"].startswith("FACTURA EMITIDA DURANTE LA RESTRICCIÓN")
+    assert core.cruzar(r.compras, _padron()).empty
+
+    b = core.buscar_rucs("20616315308", _padron(), rel)
+    assert "VINCULADO" in b.iloc[0]["Resultado"] and b.iloc[0]["Razón social"] == "WOD AND IRON S.A.C."
+
+
+def test_relacion_real():
+    from pathlib import Path
+    data = (Path(__file__).resolve().parents[1] / "data" / "relacion-ssco.xlsx").read_bytes()
+    rel = core.leer_relacion(data)
+    assert len(rel) == 106 and rel["RUC"].is_unique

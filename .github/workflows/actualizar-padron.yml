@@ -1,4 +1,4 @@
-name: Actualizar padrón SSCO
+name: Actualizar padrón SSCO y relación art. 12
 
 on:
   schedule:
@@ -22,5 +22,5 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/sujesincapacidadOperativa.xlsx
-          git diff --cached --quiet || (git commit -m "Actualiza padrón SSCO $(date +%Y-%m-%d)" && git push)
+          git add data/sujesincapacidadOperativa.xlsx data/relacion-ssco.xlsx
+          git diff --cached --quiet || (git commit -m "Actualiza listas SSCO $(date +%Y-%m-%d)" && git push)
