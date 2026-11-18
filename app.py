@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hmac
+import importlib
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,6 +11,10 @@ import pandas as pd
 import streamlit as st
 
 import ssco_core as core
+
+# Streamlit Cloud puede volver a ejecutar app.py tras un `git pull` sin recargar los módulos
+# importados; recargarlo evita usar una versión desactualizada de ssco_core.
+core = importlib.reload(core)
 
 st.set_page_config(page_title="Cruce SSCO – Registro de Compras", page_icon="🔎", layout="wide")
 
