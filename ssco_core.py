@@ -20,6 +20,7 @@ import pandas as pd
 import requests
 
 SSCO_URL = "https://www.sunat.gob.pe/padronesnotificaciones/ssco/sujesincapacidadOperativa.xlsx"
+SSCO_PAGINA = "https://www.sunat.gob.pe/padronesnotificaciones/sujeSinCapacidadOperativa.html"
 # Relación art. 12 DL 1532 (EIRL y sociedades vinculadas a SSCO). SUNAT no documenta una URL
 # fija para el Excel; se prueban estas rutas y, si fallan, la app usa la copia en data/.
 RELACION_PAGINA = "https://www.sunat.gob.pe/padronesnotificaciones/relacion-ssco.html"

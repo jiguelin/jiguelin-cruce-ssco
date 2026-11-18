@@ -37,6 +37,12 @@ como fuera de alcance.
 
 > Si el repositorio es privado, Streamlit pedirá autorizar el acceso a repos privados.
 
+## Páginas oficiales de SUNAT
+- Padrón SSCO: <https://www.sunat.gob.pe/padronesnotificaciones/sujeSinCapacidadOperativa.html>
+- Relación art. 12 (vinculados a SSCO): <https://www.sunat.gob.pe/padronesnotificaciones/relacion-ssco.html>
+
+En ambas, el Excel se descarga con el enlace «Descargue la información aquí».
+
 ## Actualización del padrón
 - La app intenta descargar el padrón de SUNAT cada vez que se abre (caché 6 h).
 - El workflow `.github/workflows/actualizar-padron.yml` intenta actualizar `data/sujesincapacidadOperativa.xlsx`

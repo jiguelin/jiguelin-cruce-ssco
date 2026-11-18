@@ -45,11 +45,11 @@ if not verificar_acceso():
 LISTAS = {
     "padron": dict(
         titulo="📋 Padrón SSCO", corto="padrón SSCO", unidad="sujetos SSCO cargados",
-        descargar=core.descargar_padron, leer=core.leer_padron, local=PADRON_LOCAL,
+        descargar=core.descargar_padron, leer=core.leer_padron, local=PADRON_LOCAL, pagina=core.SSCO_PAGINA,
         ayuda="SUNAT › Padrones y Notificaciones › Sujetos sin Capacidad Operativa."),
     "relacion": dict(
         titulo="🔗 Vinculados a SSCO (art. 12)", corto="relación art. 12", unidad="empresas vinculadas cargadas",
-        descargar=core.descargar_relacion, leer=core.leer_relacion, local=RELACION_LOCAL,
+        descargar=core.descargar_relacion, leer=core.leer_relacion, local=RELACION_LOCAL, pagina=core.RELACION_PAGINA,
         ayuda="SUNAT › Padrones y Notificaciones › Relación art. 12 DL 1532 (EIRL y sociedades "
               "cuyos titulares o socios son SSCO)."),
 }
@@ -69,6 +69,8 @@ def lista_desde_bytes(clave: str, data: bytes, nombre: str) -> pd.DataFrame:
 def obtener_lista(clave: str) -> tuple[pd.DataFrame | None, str]:
     cfg = LISTAS[clave]
     st.header(cfg["titulo"])
+    st.link_button("🌐 Abrir página de SUNAT", cfg["pagina"], use_container_width=True,
+                   help="Allí puede ver la lista y descargar el Excel con «Descargue la información aquí».")
     fuente = st.radio(
         "Fuente", ["Descargar de SUNAT (automático)", "Copia guardada en la app", "Subir archivo manualmente"],
         key=f"fuente_{clave}",
@@ -93,6 +95,8 @@ def obtener_lista(clave: str) -> tuple[pd.DataFrame | None, str]:
         else:
             st.error("No hay copia guardada; suba el archivo manualmente.")
     if fuente.startswith("Subir"):
+        st.caption(f"Descargue el Excel desde la [página de SUNAT]({cfg['pagina']}) "
+                   "(enlace «Descargue la información aquí») y súbalo aquí.")
         archs = st.file_uploader(
             f"Excel(es) de la {cfg['corto']}", type=["xlsx", "xls", "csv"], key=f"subir_{clave}",
             accept_multiple_files=True,
@@ -276,6 +280,10 @@ with tab_ayuda:
 **¿Qué hace esta app?** Cruza los RUC de los proveedores de su registro de compras con la
 *Relación de Sujetos sin Capacidad Operativa con resoluciones de atribución firmes* que publica SUNAT.
 
+**Páginas oficiales de SUNAT (para ver o descargar las listas):**
+- Padrón SSCO: [{pag_ssco}]({pag_ssco})
+- Relación art. 12 (vinculados a SSCO): [{pag_rel}]({pag_rel})
+
 **Relación art. 12 (vinculados a SSCO):** SUNAT también publica las EIRL y sociedades cuyos
 titulares o socios son SSCO. Desde el día siguiente a su publicación y hasta la fecha límite indicada,
 solo pueden emitir boletas de venta y notas de crédito/débito electrónicas. La app las reporta por
@@ -305,4 +313,5 @@ presentar una *Solicitud de revisión* dentro de los 30 días hábiles siguiente
 en el repositorio (`data/`), que un proceso de GitHub Actions intenta actualizar cada mes.
 
 > Herramienta de apoyo; no sustituye la revisión de un especialista tributario.
-""".replace("{url}", core.SSCO_URL))
+""".replace("{url}", core.SSCO_URL).replace("{pag_ssco}", core.SSCO_PAGINA)
+    .replace("{pag_rel}", core.RELACION_PAGINA))
