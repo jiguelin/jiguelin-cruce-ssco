@@ -21,13 +21,10 @@ import requests
 
 SSCO_URL = "https://www.sunat.gob.pe/padronesnotificaciones/ssco/sujesincapacidadOperativa.xlsx"
 SSCO_PAGINA = "https://www.sunat.gob.pe/padronesnotificaciones/sujeSinCapacidadOperativa.html"
-# Relación art. 12 DL 1532 (EIRL y sociedades vinculadas a SSCO). SUNAT no documenta una URL
-# fija para el Excel; se prueban estas rutas y, si fallan, la app usa la copia en data/.
+# Relación art. 12 DL 1532 (EIRL y sociedades vinculadas a SSCO).
 RELACION_PAGINA = "https://www.sunat.gob.pe/padronesnotificaciones/relacion-ssco.html"
-RELACION_URLS = [
-    "https://www.sunat.gob.pe/padronesnotificaciones/ssco/descarga-relacion-ssco.xlsx",
-    "https://www.sunat.gob.pe/padronesnotificaciones/descarga-relacion-ssco.xlsx",
-]
+RELACION_URL = "https://www.sunat.gob.pe/padronesnotificaciones/relacion-ssco/descarga-relacion-ssco.xlsx"
+RELACION_URLS = [RELACION_URL]
 FECHA_INICIO_DL1532 = date(2022, 3, 20)
 
 RUC_RE = re.compile(r"^(10|15|16|17|20)\d{9}$")

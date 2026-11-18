@@ -43,6 +43,10 @@ como fuera de alcance.
 
 En ambas, el Excel se descarga con el enlace «Descargue la información aquí».
 
+Descarga directa:
+- Padrón SSCO: <https://www.sunat.gob.pe/padronesnotificaciones/ssco/sujesincapacidadOperativa.xlsx>
+- Relación art. 12: <https://www.sunat.gob.pe/padronesnotificaciones/relacion-ssco/descarga-relacion-ssco.xlsx>
+
 ## Actualización del padrón
 - La app intenta descargar el padrón de SUNAT cada vez que se abre (caché 6 h).
 - El workflow `.github/workflows/actualizar-padron.yml` intenta actualizar `data/sujesincapacidadOperativa.xlsx`

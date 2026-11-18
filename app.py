@@ -284,6 +284,10 @@ with tab_ayuda:
 - Padrón SSCO: [{pag_ssco}]({pag_ssco})
 - Relación art. 12 (vinculados a SSCO): [{pag_rel}]({pag_rel})
 
+**Descarga directa de los Excel:**
+- Padrón SSCO: [{url}]({url})
+- Relación art. 12: [{url_rel}]({url_rel})
+
 **Relación art. 12 (vinculados a SSCO):** SUNAT también publica las EIRL y sociedades cuyos
 titulares o socios son SSCO. Desde el día siguiente a su publicación y hasta la fecha límite indicada,
 solo pueden emitir boletas de venta y notas de crédito/débito electrónicas. La app las reporta por
@@ -314,4 +318,4 @@ en el repositorio (`data/`), que un proceso de GitHub Actions intenta actualizar
 
 > Herramienta de apoyo; no sustituye la revisión de un especialista tributario.
 """.replace("{url}", core.SSCO_URL).replace("{pag_ssco}", core.SSCO_PAGINA)
-    .replace("{pag_rel}", core.RELACION_PAGINA))
+    .replace("{pag_rel}", core.RELACION_PAGINA).replace("{url_rel}", core.RELACION_URL))
